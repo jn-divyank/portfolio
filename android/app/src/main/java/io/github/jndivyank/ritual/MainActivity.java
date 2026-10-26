@@ -1,13 +1,16 @@
 package io.github.jndivyank.ritual;
 
+import android.Manifest;
 import android.annotation.SuppressLint;
 import android.content.ActivityNotFoundException;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.content.res.Configuration;
 import android.graphics.Color;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.provider.Settings;
 import android.view.HapticFeedbackConstants;
 import android.view.ViewGroup;
 import android.webkit.JavascriptInterface;
@@ -38,8 +41,8 @@ import java.util.Locale;
 
 /**
  * Hosts the web app in tracker/ (bundled into the APK as assets) in a full-screen WebView,
- * and adds the few things a browser can't do well on Android: the back button, system bar
- * colours, haptics, and saving or opening backup files.
+ * and adds what a browser can't do well on Android: the back button, system bar colours,
+ * haptics, saving or opening backup files, and a data file shared with the widget and reminders.
  */
 public class MainActivity extends ComponentActivity {
     // Assets are served from a fixed https origin so the page is a secure context and its
@@ -63,6 +66,10 @@ public class MainActivity extends ComponentActivity {
                         WebChromeClient.FileChooserParams.parseResult(result.getResultCode(), result.getData()));
                 pendingFileCallback = null;
             });
+
+    private final ActivityResultLauncher<String> askNotifications = registerForActivityResult(
+            new ActivityResultContracts.RequestPermission(), granted -> notifyPage(
+                    "window.ritualNotifications && window.ritualNotifications(" + Reminders.notificationsAllowed(this) + ")"));
 
     private final ActivityResultLauncher<String> saveFile = registerForActivityResult(
             new ActivityResultContracts.CreateDocument("application/json"), uri -> {
@@ -167,7 +174,15 @@ public class MainActivity extends ComponentActivity {
             }
         });
 
+        // The widget or a notification changed the data: have the page pick it up.
+        Store.setListener(() -> notifyPage("window.ritualReload && window.ritualReload()"));
+        Sync.afterChangeInBackground(this); // make sure reminder alarms are set after an update
+
         webView.loadUrl(START_URL);
+    }
+
+    private void notifyPage(String script) {
+        runOnUiThread(() -> webView.evaluateJavascript(script, null));
     }
 
     @Override
@@ -184,6 +199,7 @@ public class MainActivity extends ComponentActivity {
 
     @Override
     protected void onDestroy() {
+        Store.setListener(null);
         webView.destroy();
         super.onDestroy();
     }
@@ -236,6 +252,59 @@ public class MainActivity extends ComponentActivity {
 
     /** Exposed to the page as window.RitualNative. Called on a background thread. */
     private final class Bridge {
+        @JavascriptInterface
+        public String readState() {
+            return Store.read(MainActivity.this);
+        }
+
+        @JavascriptInterface
+        public boolean writeState(String json) {
+            boolean saved = Store.write(MainActivity.this, json);
+            if (saved) Sync.afterChangeInBackground(MainActivity.this);
+            return saved;
+        }
+
+        @JavascriptInterface
+        public boolean saveRescue(String raw, String name) {
+            return Store.saveRescue(MainActivity.this, raw, name);
+        }
+
+        @JavascriptInterface
+        public String listRescues() {
+            return Store.listRescues(MainActivity.this);
+        }
+
+        @JavascriptInterface
+        public String readRescue(String name) {
+            return Store.readRescue(MainActivity.this, name);
+        }
+
+        @JavascriptInterface
+        public boolean notificationsEnabled() {
+            return Reminders.notificationsAllowed(MainActivity.this);
+        }
+
+        /** Answers through window.ritualNotifications(enabled). */
+        @JavascriptInterface
+        public void requestNotifications() {
+            runOnUiThread(() -> {
+                boolean canAsk = Build.VERSION.SDK_INT >= 33 && checkSelfPermission(
+                        Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED;
+                if (canAsk) {
+                    askNotifications.launch(Manifest.permission.POST_NOTIFICATIONS);
+                } else {
+                    notifyPage("window.ritualNotifications && window.ritualNotifications("
+                            + Reminders.notificationsAllowed(MainActivity.this) + ")");
+                }
+            });
+        }
+
+        @JavascriptInterface
+        public void openNotificationSettings() {
+            runOnUiThread(() -> startActivity(new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                    .putExtra(Settings.EXTRA_APP_PACKAGE, getPackageName())));
+        }
+
         @JavascriptInterface
         public void setTheme(boolean dark) {
             runOnUiThread(() -> applySystemBars(dark));

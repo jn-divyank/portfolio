@@ -1,4 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Ritual</string>
+
+    <string name="reminders_channel">Habit reminders</string>
+    <string name="reminder_check">Time to check this off.</string>
+    <string name="reminder_count">%1$d of %2$d%3$s so far</string>
+    <string name="action_done">Done</string>
+    <string name="action_plus_one">+1</string>
+
+    <string name="widget_label">Today’s habits</string>
+    <string name="widget_description">Check off today’s habits from your home screen.</string>
+    <string name="widget_title">Today</string>
+    <string name="widget_empty">Open Ritual to add your first habit.</string>
+    <string name="widget_rest">Nothing scheduled today. Enjoy the rest.</string>
+    <string name="widget_perfect">Perfect day</string>
+    <string name="widget_progress">%1$d of %2$d done</string>
+    <string name="widget_more">+%1$d more</string>
+    <string name="widget_mark">Mark %1$s done</string>
+    <string name="widget_undo">Mark %1$s not done</string>
+    <string name="widget_add_one">Add one to %1$s</string>
 </resources>

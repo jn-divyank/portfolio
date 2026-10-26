@@ -1092,6 +1092,36 @@ html.scrolled .topbar {
   font-size: 15.5px;
 }
 
+.rescue-note {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  width: 100%;
+  margin: -6px 0 20px;
+  padding: 14px 16px;
+  border-radius: var(--r-md);
+  background: color-mix(in srgb, #f5a623 14%, var(--surface));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, #f5a623 35%, transparent);
+  text-align: left;
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--ink-2);
+}
+
+.rescue-note .i {
+  margin-top: 1px;
+  color: #c47f00;
+}
+
+.is-dark .rescue-note .i {
+  color: #ffc22e;
+}
+
+.rescue-note strong {
+  color: var(--ink);
+  font-weight: 650;
+}
+
 .starters {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -1786,6 +1816,52 @@ dialog.sheet-host::backdrop {
   margin-top: 28px;
 }
 
+.reminder-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.reminder-row .row-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.time-input {
+  height: 38px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 11px;
+  outline: 0;
+  background: var(--surface-2);
+  font-size: 15.5px;
+  font-weight: 620;
+  font-variant-numeric: tabular-nums;
+}
+
+.time-input:focus-visible {
+  box-shadow: 0 0 0 2px var(--c);
+}
+
+.time-input[hidden],
+.reminder-warning[hidden] {
+  display: none;
+}
+
+.reminder-warning {
+  margin: 12px 0 0;
+  font-size: 13.5px;
+  line-height: 1.4;
+  color: var(--danger);
+}
+
+.reminder-warning button {
+  font-weight: 650;
+  color: var(--ink);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
 /* ---------- Detail ---------- */
 
 .detail-hero {
@@ -1819,6 +1895,29 @@ dialog.sheet-host::backdrop {
   margin: 3px 0 0;
   font-size: 14px;
   color: var(--ink-2);
+}
+
+.detail-reminder {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 8px;
+  padding: 2px 8px 2px 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--c) 14%, transparent);
+  color: var(--cd);
+  font-size: 12.5px;
+  font-weight: 620;
+  vertical-align: 1px;
+}
+
+.detail-reminder .i {
+  width: 13px;
+  height: 13px;
+}
+
+.is-dark .detail-reminder {
+  color: var(--c);
 }
 
 .log-panel {
@@ -2405,6 +2504,15 @@ label.row:active {
 .row.danger .row-icon {
   background: color-mix(in srgb, var(--danger) 12%, transparent);
   color: var(--danger);
+}
+
+.row.warn .row-icon {
+  background: color-mix(in srgb, #f5a623 18%, transparent);
+  color: #c47f00;
+}
+
+.is-dark .row.warn .row-icon {
+  color: #ffc22e;
 }
 
 .group {

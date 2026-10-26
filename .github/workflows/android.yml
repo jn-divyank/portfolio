@@ -26,6 +26,9 @@ jobs:
           distribution: temurin
           java-version: '21'
 
+      - name: Test web app logic
+        run: node --test
+
       - name: Load signing key
         env:
           KEYSTORE_BASE64: ${{ secrets.RITUAL_KEYSTORE_BASE64 }}
@@ -37,11 +40,11 @@ jobs:
             echo "::notice::Signing secrets aren't set, so this run only checks that the app builds. See the README to publish signed APKs."
           fi
 
-      - name: Build APK
+      - name: Test and build APK
         working-directory: android
         env:
           RITUAL_KEYSTORE_PASSWORD: ${{ secrets.RITUAL_KEYSTORE_PASSWORD }}
-        run: RITUAL_VERSION_CODE=$((100 + GITHUB_RUN_NUMBER)) ./gradlew --no-daemon assembleRelease
+        run: RITUAL_VERSION_CODE=$((100 + GITHUB_RUN_NUMBER)) ./gradlew --no-daemon testReleaseUnitTest assembleRelease
 
       - name: Publish release
         if: env.RITUAL_KEYSTORE != ''

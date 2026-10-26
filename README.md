@@ -37,6 +37,12 @@ A small native shell that runs the same `tracker/` files in a full-screen WebVie
 - system bar colours that follow the theme
 - haptics
 - saving and opening backups through Android's file picker
+- **Reminders:** one time per habit, sent only on scheduled days when the habit isn't done yet. The notification has *Done* or *+1* buttons. Alarms are set again after a restart, an app update, or a clock or time-zone change.
+- **Home-screen widget:** today's day wheel and habits, with tap-to-check circles. It refreshes on every change and just after midnight.
+
+**Where the data lives.** On Android, the data is a JSON file in the app's private storage. The app, the widget and reminders all share it, and writes are atomic. The page's `localStorage` keeps a mirror; that's also where 1.0 stored data, which is copied into the file on first launch.
+
+**Rescue copies.** If saved data can't be read in full, the app parks the original before anything can overwrite it, in the app's `rescue/` folder or under `ritual.rescue.*` in the browser. It keeps the 5 newest. Settings (or the welcome screen) offers to export the latest one.
 
 **Install:** download the APK on your phone and tap it. Android will ask you to allow installs from that app (your browser or Files) the first time.
 
@@ -62,10 +68,11 @@ After that, the newest APK is always at `https://github.com/jn-divyank/portfolio
 ### Tests
 
 ```sh
-node --test
+node --test                                  # streak, rate and perfect-day logic in tracker/lib.js
+cd android && ./gradlew testReleaseUnitTest  # Robolectric: data file, reminders, notifications, widget
 ```
 
-These cover the streak, completion-rate and perfect-day logic in `tracker/lib.js`.
+The widget tests inflate the layouts the way a launcher does, so a view that isn't allowed in widgets fails the build instead of showing "Can't load widget" on a phone.
 
 ### Credits
 

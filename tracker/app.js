@@ -4,7 +4,7 @@ import * as L from './lib.js';
 /* ---------- Constants ---------- */
 
 const STORAGE_KEY = 'ritual.v1';
-const VERSION = '1.0';
+const VERSION = '1.1';
 
 const COLORS = [
   { id: 'coral', name: 'Coral', hex: '#FF5D5D', deep: '#E5484D' },
@@ -57,7 +57,13 @@ const fmt = {
   month: new Intl.DateTimeFormat(undefined, { month: 'long', year: 'numeric' }),
   monthShort: new Intl.DateTimeFormat(undefined, { month: 'short' }),
   dayMonth: new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', year: 'numeric' }),
+  time: new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' }),
 };
+
+function formatTime(hhmm) {
+  const [h, m] = hhmm.split(':').map(Number);
+  return fmt.time.format(new Date(2026, 0, 1, h, m));
+}
 
 // Index by Date#getDay() (0 = Sunday). 4 Jan 2026 is a Sunday.
 const DOW_SHORT = EVERY_DAY.map((i) => fmt.short.format(new Date(2026, 0, 4 + i)));
@@ -70,6 +76,7 @@ function defaultState() {
 }
 
 const KEY_RE = /^\d{4}-\d{2}-\d{2}$/;
+const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 function normalize(data) {
   if (!data || !Array.isArray(data.habits) || typeof data.logs !== 'object' || data.logs === null) {
@@ -87,6 +94,7 @@ function normalize(data) {
       unit: h.type === 'count' && typeof h.unit === 'string' ? h.unit.slice(0, 20) : '',
       days: Array.isArray(h.days) && h.days.length ? EVERY_DAY.filter((d) => h.days.includes(d)) : [...EVERY_DAY],
       createdAt: h.createdAt,
+      reminder: typeof h.reminder === 'string' && TIME_RE.test(h.reminder) ? h.reminder : null,
     }));
   const ids = new Set(habits.map((h) => h.id));
   const logs = {};
@@ -110,24 +118,116 @@ function normalize(data) {
   };
 }
 
-function load() {
+/* ---------- Storage ---------- */
+
+// Present when running inside the Android app (see android/).
+const native = window.RitualNative ?? null;
+
+// In the Android app, the app's data file is the source of truth, shared with the home-screen
+// widget and reminders; localStorage keeps a mirror (and is where older versions stored data).
+// On the web, localStorage is all there is.
+const RESCUE_PREFIX = 'ritual.rescue.';
+const MAX_RESCUES = 5;
+let lastSaved = null;
+let rescuedNow = false;
+
+function readSaved() {
+  const fromApp = native?.readState();
+  if (fromApp) return fromApp;
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) return normalize(JSON.parse(raw));
+    return localStorage.getItem(STORAGE_KEY);
   } catch {
-    // Corrupt or blocked storage: start fresh rather than crash.
+    return null;
   }
-  return defaultState();
+}
+
+// Data that can't be read in full is parked before anything can overwrite it.
+function keepRescueCopy(raw) {
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  if (native) {
+    rescuedNow = native.saveRescue(raw, `ritual-unreadable-${stamp}.json`);
+    return;
+  }
+  try {
+    const old = rescueCopies().slice(MAX_RESCUES - 1);
+    old.forEach((r) => localStorage.removeItem(r.name));
+    localStorage.setItem(RESCUE_PREFIX + stamp, raw);
+    rescuedNow = true;
+  } catch {
+    // Storage full or blocked; nothing more we can do here.
+  }
+}
+
+// Newest first.
+function rescueCopies() {
+  if (native) return JSON.parse(native.listRescues() || '[]').map((name) => ({ name }));
+  const names = [];
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key.startsWith(RESCUE_PREFIX)) names.push(key);
+    }
+  } catch {
+    return [];
+  }
+  return names.sort().reverse().map((name) => ({ name }));
+}
+
+function readRescue(name) {
+  return native ? native.readRescue(name) : localStorage.getItem(name);
+}
+
+function load() {
+  const raw = readSaved();
+  if (!raw) return defaultState();
+  lastSaved = raw;
+  try {
+    const data = JSON.parse(raw);
+    const loaded = normalize(data);
+    if (loaded.habits.length < data.habits.length) keepRescueCopy(raw);
+    return loaded;
+  } catch {
+    keepRescueCopy(raw);
+    return defaultState();
+  }
 }
 
 let state = load();
 
 function save() {
+  const json = JSON.stringify(state);
+  lastSaved = json;
+  let ok = native ? native.writeState(json) : true;
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    localStorage.setItem(STORAGE_KEY, json);
   } catch {
-    toast('Couldn’t save. Storage may be full or blocked.');
+    if (!native) ok = false;
   }
+  if (!ok) toast('Couldn’t save. Storage may be full or blocked.');
+}
+
+// First run of the Android app after updating: move data into the shared app file.
+if (native && !native.readState()) save();
+
+// The widget or a notification changed the data while the app was open in the background.
+function reloadFromApp() {
+  if (!native) return;
+  const raw = native.readState();
+  if (!raw || raw === lastSaved) return;
+  try {
+    state = normalize(JSON.parse(raw));
+  } catch {
+    return;
+  }
+  lastSaved = raw;
+  try {
+    localStorage.setItem(STORAGE_KEY, raw);
+  } catch {
+    // Mirror only; the app file already has it.
+  }
+  applyTheme();
+  render();
+  refreshSheets();
 }
 
 const ui = {
@@ -139,9 +239,6 @@ const ui = {
 
 let todayKey = L.dateKey(L.startOfDay());
 let installEvent = null;
-
-// Present when running inside the Android app (see android/).
-const native = window.RitualNative ?? null;
 
 /* ---------- Helpers ---------- */
 
@@ -590,6 +687,14 @@ function emptyHTML() {
     </div>
     <h2>Small rituals,<br>big results.</h2>
     <p>Pick a few habits to start with. You can change them anytime.</p>
+    ${
+      rescueCopies().length
+        ? `<button class="rescue-note" type="button" data-action="export-rescue">
+            ${icon('life-buoy')}
+            <span><strong>Your earlier data couldn’t be read.</strong> A copy was kept. Tap to export it so it can be repaired.</span>
+          </button>`
+        : ''
+    }
     <div class="starters">
       ${STARTERS.map(
         (s) => `<button class="starter" type="button" data-action="pick" data-key="${s.key}" aria-pressed="${ui.picked.has(s.key)}" style="${colorVars(s.color)}">
@@ -876,9 +981,12 @@ function settingsHTML() {
 
     ${install}
 
+    ${native ? remindersGroupHTML() : ''}
+
     <div class="group">
       <h2 class="group-title">Your data</h2>
       <div class="list">
+        ${rescueRowHTML()}
         <button class="row" type="button" data-action="export">
           <span class="row-icon">${icon('download')}</span>
           <span class="row-text"><span class="row-title">Export backup</span><span class="row-sub">${total} habit${total === 1 ? '' : 's'} · ${checkins} check-in${checkins === 1 ? '' : 's'}</span></span>
@@ -906,9 +1014,51 @@ function settingsHTML() {
   </section>`;
 }
 
-async function exportData() {
-  const name = `ritual-backup-${todayKey}.json`;
-  const json = JSON.stringify(state, null, 2);
+function remindersGroupHTML() {
+  const enabled = native.notificationsEnabled();
+  const n = state.habits.filter((h) => h.reminder).length;
+  const sub = !enabled
+    ? 'Off · Tap to turn on'
+    : n
+      ? `On · ${n} habit${n === 1 ? ' has a reminder' : 's have reminders'}`
+      : 'On · Set one when editing a habit';
+  return `<div class="group">
+      <h2 class="group-title">Reminders</h2>
+      <div class="list">
+        <button class="row" type="button" data-action="notifications">
+          <span class="row-icon">${icon('bell')}</span>
+          <span class="row-text"><span class="row-title">Notifications</span><span class="row-sub">${sub}</span></span>
+          <span class="row-end">${icon('chevron-right', 'chev')}</span>
+        </button>
+      </div>
+    </div>`;
+}
+
+function rescueRowHTML() {
+  const copies = rescueCopies();
+  if (!copies.length) return '';
+  return `<button class="row warn" type="button" data-action="export-rescue">
+      <span class="row-icon">${icon('life-buoy')}</span>
+      <span class="row-text">
+        <span class="row-title">Unreadable data was kept</span>
+        <span class="row-sub">Export the latest copy so it can be repaired</span>
+      </span>
+      <span class="row-end">${icon('chevron-right', 'chev')}</span>
+    </button>`;
+}
+
+function exportData() {
+  exportFile(JSON.stringify(state, null, 2), `ritual-backup-${todayKey}.json`);
+}
+
+function exportRescue() {
+  const [latest] = rescueCopies();
+  if (!latest) return;
+  const raw = readRescue(latest.name);
+  exportFile(raw, native ? latest.name : `ritual-unreadable-${latest.name.slice(RESCUE_PREFIX.length)}.json`);
+}
+
+async function exportFile(json, name) {
   if (native) {
     // Opens Android's "Save to…" picker; the result comes back via ritualBackupSaved.
     native.saveBackup(json, name);
@@ -1103,7 +1253,7 @@ function openEditor(id) {
   const existing = id ? habitById(id) : null;
   const usedColors = new Set(state.habits.map((h) => h.color));
   const draft = existing
-    ? { ...existing, days: [...existing.days], target: existing.type === 'count' ? existing.target : 8 }
+    ? { ...existing, days: [...existing.days], target: existing.type === 'count' ? existing.target : 8, reminderTime: existing.reminder ?? '20:00' }
     : {
         name: '',
         icon: 'sparkles',
@@ -1112,6 +1262,8 @@ function openEditor(id) {
         target: 8,
         unit: '',
         days: [...EVERY_DAY],
+        reminder: null,
+        reminderTime: '20:00',
       };
 
   const inner = `
@@ -1180,6 +1332,27 @@ function openEditor(id) {
         </div>
       </section>
 
+      ${
+        native
+          ? `<section class="field">
+              <div class="field-label"><span>Reminder</span><span data-ed="reminder-label"></span></div>
+              <div class="panel">
+                <div class="reminder-row">
+                  <span class="row-text">
+                    <span class="row-title">Remind me</span>
+                    <span class="row-sub">On scheduled days, unless it’s done</span>
+                  </span>
+                  <input class="time-input" type="time" data-ed="reminder-time" aria-label="Reminder time">
+                  <button class="switch" type="button" role="switch" data-ed="reminder" aria-label="Reminder"></button>
+                </div>
+                <p class="reminder-warning" data-ed="reminder-warning" hidden>
+                  Notifications are off for Ritual. <button type="button" data-ed="notifications">Turn on</button>
+                </p>
+              </div>
+            </section>`
+          : ''
+      }
+
       ${existing ? `<button class="btn btn-danger btn-block editor-delete" type="button" data-ed="delete">${icon('trash-2')}Delete habit</button>` : ''}
     </div>`;
 
@@ -1207,6 +1380,16 @@ function openEditor(id) {
         $$('[data-ed="preset"]', dlg).forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.value === daysKey)));
         $('[data-ed="schedule"]', dlg).textContent = draft.days.length ? scheduleLabel(draft.days) : 'Pick at least one day';
         $('[data-ed="save"]', dlg).disabled = !draft.name.trim() || !draft.days.length;
+        const reminderSwitch = $('[data-ed="reminder"]', dlg);
+        if (reminderSwitch) {
+          const on = draft.reminder !== null;
+          const time = $('[data-ed="reminder-time"]', dlg);
+          reminderSwitch.setAttribute('aria-checked', String(on));
+          time.hidden = !on;
+          if (time.value !== draft.reminderTime) time.value = draft.reminderTime;
+          $('[data-ed="reminder-label"]', dlg).textContent = on ? formatTime(draft.reminderTime) : 'Off';
+          $('[data-ed="reminder-warning"]', dlg).hidden = !on || native.notificationsEnabled();
+        }
       };
 
       const commit = () => {
@@ -1220,6 +1403,7 @@ function openEditor(id) {
           target: draft.type === 'count' ? draft.target : 1,
           unit: draft.type === 'count' ? draft.unit.trim() : '',
           days: EVERY_DAY.filter((d) => draft.days.includes(d)),
+          reminder: draft.reminder,
         };
         if (existing) {
           Object.assign(existing, data);
@@ -1274,6 +1458,13 @@ function openEditor(id) {
             $(`[data-ed="icon"][data-value="${s.icon}"]`, dlg)?.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' });
             break;
           }
+          case 'reminder':
+            draft.reminder = draft.reminder === null ? draft.reminderTime : null;
+            if (draft.reminder) requestNotifications().then(paint);
+            break;
+          case 'notifications':
+            turnOnNotifications().then(paint);
+            return;
           case 'save':
             commit();
             return;
@@ -1298,6 +1489,12 @@ function openEditor(id) {
       });
       $('[data-ed="unit"]', dlg).addEventListener('input', (e) => {
         draft.unit = e.target.value;
+      });
+      $('[data-ed="reminder-time"]', dlg)?.addEventListener('input', (e) => {
+        if (!TIME_RE.test(e.target.value)) return;
+        draft.reminderTime = e.target.value;
+        if (draft.reminder !== null) draft.reminder = e.target.value;
+        paint();
       });
 
       paint();
@@ -1446,7 +1643,9 @@ function detailHTML(h, month) {
       <span class="habit-icon">${icon(h.icon)}</span>
       <div>
         <h2 class="detail-name">${esc(h.name)}</h2>
-        <p class="detail-sub">${h.type === 'count' ? `${goalLabel(h)} · ` : ''}${scheduleLabel(h.days)}</p>
+        <p class="detail-sub">${h.type === 'count' ? `${goalLabel(h)} · ` : ''}${scheduleLabel(h.days)}${
+          native && h.reminder ? `<span class="detail-reminder">${icon('bell')}${formatTime(h.reminder)}</span>` : ''
+        }</p>
       </div>
     </div>
     ${
@@ -1613,6 +1812,13 @@ document.addEventListener('click', (e) => {
     case 'export':
       exportData();
       break;
+    case 'export-rescue':
+      exportRescue();
+      break;
+    case 'notifications':
+      if (native.notificationsEnabled()) native.openNotificationSettings();
+      else turnOnNotifications();
+      break;
     case 'erase':
       eraseAll();
       break;
@@ -1685,7 +1891,9 @@ function checkDayRollover() {
 }
 
 document.addEventListener('visibilitychange', () => {
-  if (!document.hidden) checkDayRollover();
+  if (document.hidden) return;
+  reloadFromApp();
+  checkDayRollover();
 });
 setInterval(checkDayRollover, 60_000);
 
@@ -1715,11 +1923,45 @@ window.ritualBack = () => {
 
 window.ritualBackupSaved = (ok) => toast(ok ? 'Backup saved' : 'Couldn’t save the backup');
 
+window.ritualReload = reloadFromApp;
+
+let notificationWaiter = null;
+
+window.ritualNotifications = (granted) => {
+  notificationWaiter?.(granted);
+  notificationWaiter = null;
+  if (ui.tab === 'settings' && !$('dialog.sheet-host')) render();
+};
+
+// Asks Android for notification permission if needed; resolves to whether notifications are on.
+function requestNotifications() {
+  if (native.notificationsEnabled()) return Promise.resolve(true);
+  return new Promise((resolve) => {
+    notificationWaiter = resolve;
+    native.requestNotifications();
+  });
+}
+
+// When the permission was refused for good, only the system settings screen can turn it back on.
+async function turnOnNotifications() {
+  if (!(await requestNotifications())) native.openNotificationSettings();
+}
+
 /* ---------- Boot ---------- */
 
 applyTheme();
 renderNav();
 render();
+
+if (rescuedNow) {
+  toast('Some saved data couldn’t be read. A copy was kept.', {
+    label: 'View',
+    run() {
+      ui.tab = 'settings';
+      render({ enter: true });
+    },
+  });
+}
 
 if (!native && 'serviceWorker' in navigator && location.protocol !== 'file:') {
   navigator.serviceWorker.register('./sw.js').catch(() => {});
