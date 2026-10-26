@@ -29,6 +29,36 @@ Everything is stored in the browser's `localStorage` on that device. There's no 
 - **Install it** (Add to Home Screen). Safari can clear storage for websites you haven't visited in 7 days, but installed web apps are exempt.
 - **Export a backup** from Settings now and then, and before switching phones. *Restore from backup* loads the backup back in.
 
+### Android app (`android/`)
+
+A small native shell that runs the same `tracker/` files in a full-screen WebView. The files are bundled into the APK, so it works offline and never touches the network. The native side handles:
+
+- the back button (closes the open sheet, then returns to Today)
+- system bar colours that follow the theme
+- haptics
+- saving and opening backups through Android's file picker
+
+**Install:** download the APK on your phone and tap it. Android will ask you to allow installs from that app (your browser or Files) the first time.
+
+**Updates keep your data only if they're signed with the same key.** The key is deliberately not in this repo, because the repo is public.
+
+**Build it yourself.** You need JDK 17+ and the Android SDK (platform 36):
+
+```sh
+cd android
+RITUAL_KEYSTORE=/path/to/ritual-release.jks RITUAL_KEYSTORE_PASSWORD=… ./gradlew assembleRelease
+# → app/build/outputs/apk/release/app-release.apk
+```
+
+Without those variables you get an unsigned APK, which is only useful as a build check.
+
+**Automatic releases.** `.github/workflows/android.yml` builds on every push that touches `tracker/` or `android/`. To have it publish signed APKs to GitHub Releases, add two repository secrets under *Settings → Secrets and variables → Actions*:
+
+- `RITUAL_KEYSTORE_BASE64`: the keystore file, base64-encoded
+- `RITUAL_KEYSTORE_PASSWORD`: its password
+
+After that, the newest APK is always at `https://github.com/jn-divyank/portfolio/releases/latest/download/Ritual.apk`.
+
 ### Tests
 
 ```sh

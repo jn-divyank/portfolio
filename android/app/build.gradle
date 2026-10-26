@@ -1,0 +1,59 @@
+plugins {
+    id 'com.android.application'
+}
+
+// Release signing comes from the environment so the key never lives in this (public) repo.
+// Without it, assembleRelease still builds, just unsigned.
+def keystorePath = System.getenv('RITUAL_KEYSTORE')
+def keystorePassword = System.getenv('RITUAL_KEYSTORE_PASSWORD')
+def versionCodeFromEnv = (System.getenv('RITUAL_VERSION_CODE') ?: '1') as int
+
+android {
+    namespace 'io.github.jndivyank.ritual'
+    compileSdk 36
+
+    defaultConfig {
+        applicationId 'io.github.jndivyank.ritual'
+        minSdk 26
+        targetSdk 36
+        versionCode versionCodeFromEnv
+        versionName "1.0.${versionCodeFromEnv}"
+    }
+
+    signingConfigs {
+        if (keystorePath) {
+            release {
+                storeFile file(keystorePath)
+                storePassword keystorePassword
+                keyAlias 'ritual'
+                keyPassword keystorePassword
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            if (keystorePath) signingConfig signingConfigs.release
+        }
+    }
+
+    // The web app is the single source of truth; it's packaged as-is.
+    sourceSets {
+        main {
+            assets.srcDirs = ['../../tracker']
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+dependencies {
+    implementation 'androidx.activity:activity:1.11.0'
+    implementation 'androidx.core:core:1.17.0'
+}

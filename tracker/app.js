@@ -140,6 +140,9 @@ const ui = {
 let todayKey = L.dateKey(L.startOfDay());
 let installEvent = null;
 
+// Present when running inside the Android app (see android/).
+const native = window.RitualNative ?? null;
+
 /* ---------- Helpers ---------- */
 
 const $ = (sel, root = document) => root.querySelector(sel);
@@ -171,8 +174,12 @@ const pct = (r) => (r === null ? '–' : Math.round(r * 100));
 const reducedMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 const isWide = () => matchMedia('(min-width: 720px)').matches;
 
-function haptic(pattern = 8) {
-  if (state.settings.haptics) navigator.vibrate?.(pattern);
+const VIBRATION = { tick: 6, success: 14, undo: [6, 30, 6], celebrate: [10, 50, 20] };
+
+function haptic(kind = 'tick') {
+  if (!state.settings.haptics) return;
+  if (native) native.haptic(kind);
+  else navigator.vibrate?.(VIBRATION[kind]);
 }
 
 function orderedDays() {
@@ -225,6 +232,7 @@ function applyTheme() {
   const dark = t === 'dark' || (t === 'system' && darkQuery.matches);
   document.documentElement.classList.toggle('is-dark', dark);
   $('meta[name="theme-color"]').content = dark ? '#0A0A0B' : '#F5F4F0';
+  native?.setTheme(dark);
 }
 
 darkQuery.addEventListener('change', applyTheme);
@@ -526,9 +534,9 @@ function onCheck(btn) {
   restartAnimation(btn, 'pop');
   if (nowDone && !wasDone) {
     restartAnimation(btn, 'burst');
-    haptic(14);
+    haptic('success');
   } else {
-    haptic(6);
+    haptic('tick');
   }
   refreshDay();
 
@@ -543,7 +551,7 @@ function decrement(btn) {
   if (!count) return;
   setCount(h.id, key, h.type === 'check' ? 0 : count - 1);
   save();
-  haptic([6, 30, 6]);
+  haptic('undo');
   restartAnimation(btn, 'pop');
   refreshDay();
 }
@@ -556,7 +564,7 @@ function restartAnimation(el, cls) {
 }
 
 function celebrate() {
-  haptic([10, 50, 20]);
+  haptic('celebrate');
   const wheel = $('#hero .wheel');
   if (!wheel || reducedMotion()) return;
   const r = wheel.getBoundingClientRect();
@@ -611,7 +619,7 @@ function togglePick(btn) {
   if (ui.picked.has(k)) ui.picked.delete(k);
   else ui.picked.add(k);
   btn.setAttribute('aria-pressed', String(ui.picked.has(k)));
-  haptic(6);
+  haptic('tick');
   const cta = $('[data-action="add-picked"]', view);
   const n = ui.picked.size;
   cta.disabled = !n;
@@ -859,7 +867,7 @@ function settingsHTML() {
         <div class="row">
           <span class="row-text">
             <span class="row-title">Haptic feedback</span>
-            <span class="row-sub">Vibrate on check-in, where supported</span>
+            <span class="row-sub">${native ? 'Subtle vibration when you check in' : 'Vibrate on check-in, where supported'}</span>
           </span>
           <button class="switch" type="button" role="switch" data-action="haptics" aria-checked="${s.haptics}" aria-label="Haptic feedback"></button>
         </div>
@@ -887,7 +895,11 @@ function settingsHTML() {
           <span class="row-text"><span class="row-title">Erase all data</span></span>
         </button>
       </div>
-      <p class="group-note">Your data lives in this browser only. Export a backup now and then, especially before switching phones or clearing browser data.</p>
+      <p class="group-note">${
+        native
+          ? 'Your data lives on this phone only, and uninstalling Ritual deletes it. Export a backup now and then, especially before switching phones.'
+          : 'Your data lives in this browser only. Export a backup now and then, especially before switching phones or clearing browser data.'
+      }</p>
     </div>
 
     <p class="foot">Ritual ${VERSION} · Made for one, built with care.</p>
@@ -896,7 +908,13 @@ function settingsHTML() {
 
 async function exportData() {
   const name = `ritual-backup-${todayKey}.json`;
-  const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
+  const json = JSON.stringify(state, null, 2);
+  if (native) {
+    // Opens Android's "Save to…" picker; the result comes back via ritualBackupSaved.
+    native.saveBackup(json, name);
+    return;
+  }
+  const blob = new Blob([json], { type: 'application/json' });
   // Phones (iOS home-screen apps especially) handle the share sheet far better than downloads.
   const file = new File([blob], name, { type: 'application/json' });
   if (matchMedia('(pointer: coarse)').matches && navigator.canShare?.({ files: [file] })) {
@@ -1213,7 +1231,7 @@ function openEditor(id) {
           requestPersistence();
         }
         save();
-        haptic(10);
+        haptic('success');
         close();
         render();
         refreshSheets();
@@ -1267,7 +1285,7 @@ function openEditor(id) {
           default:
             return;
         }
-        haptic(4);
+        haptic('tick');
         paint();
       });
 
@@ -1360,7 +1378,7 @@ function openDetail(id) {
             setCount(h.id, key, done ? 0 : h.target);
             if (key < h.createdAt) h.createdAt = key;
             save();
-            haptic(done ? 6 : 12);
+            haptic(done ? 'tick' : 'success');
             render();
             break;
           }
@@ -1370,7 +1388,7 @@ function openDetail(id) {
             const n = L.countFor(state, h.id, key);
             setCount(h.id, key, Math.max(0, n + (el.dataset.dt === 'inc' ? 1 : -1)));
             save();
-            haptic(6);
+            haptic('tick');
             render();
             break;
           }
@@ -1590,7 +1608,7 @@ document.addEventListener('click', (e) => {
       state.settings.haptics = !state.settings.haptics;
       save();
       el.setAttribute('aria-checked', String(state.settings.haptics));
-      haptic(10);
+      haptic('tick');
       break;
     case 'export':
       exportData();
@@ -1671,12 +1689,38 @@ document.addEventListener('visibilitychange', () => {
 });
 setInterval(checkDayRollover, 60_000);
 
+/* ---------- Android app hooks ---------- */
+
+// Android back button: close the top sheet, then step back to Today, then let the app exit.
+window.ritualBack = () => {
+  const sheets = $$('dialog.sheet-host');
+  if (sheets.length) {
+    sheets.at(-1).dispatchEvent(new Event('cancel', { cancelable: true }));
+    return true;
+  }
+  if (ui.tab !== 'today') {
+    ui.tab = 'today';
+    window.scrollTo(0, 0);
+    render({ enter: true });
+    return true;
+  }
+  if (!isTodaySelected()) {
+    ui.date = L.startOfDay();
+    render();
+    scrollWeekTo(todayKey, true);
+    return true;
+  }
+  return false;
+};
+
+window.ritualBackupSaved = (ok) => toast(ok ? 'Backup saved' : 'Couldn’t save the backup');
+
 /* ---------- Boot ---------- */
 
 applyTheme();
 renderNav();
 render();
 
-if ('serviceWorker' in navigator && location.protocol !== 'file:') {
+if (!native && 'serviceWorker' in navigator && location.protocol !== 'file:') {
   navigator.serviceWorker.register('./sw.js').catch(() => {});
 }
