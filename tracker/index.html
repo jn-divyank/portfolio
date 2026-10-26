@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Ritual — Daily habits</title>
+  <meta name="description" content="A calm, private daily habit tracker. Streaks, insights, and no subscription.">
+  <meta name="theme-color" content="#F5F4F0">
+  <meta name="color-scheme" content="light dark">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Ritual">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+  <link rel="preload" href="assets/fonts/inter-latin.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="styles.css">
+  <script>
+    // Apply the saved theme before first paint to avoid a flash.
+    try {
+      const t = JSON.parse(localStorage.getItem('ritual.v1'))?.settings?.theme;
+      if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t;
+      const dark = t === 'dark' || (t !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches);
+      document.documentElement.classList.toggle('is-dark', dark);
+    } catch {}
+  </script>
+  <script type="module" src="app.js"></script>
+</head>
+<body>
+  <div class="app">
+    <nav class="nav" aria-label="Main">
+      <div class="brand">
+        <img class="brand-mark" src="assets/icon.svg" alt="" width="30" height="30">
+        <span class="brand-name">Ritual</span>
+      </div>
+      <div class="nav-items" role="tablist"></div>
+      <button class="nav-new" data-action="new-habit" type="button"></button>
+    </nav>
+    <main class="view" id="view" tabindex="-1"></main>
+  </div>
+  <div class="toast-host" aria-live="polite"></div>
+  <canvas class="confetti" aria-hidden="true"></canvas>
+</body>
+</html>

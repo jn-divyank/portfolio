@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs><radialGradient id="g" cx="50%" cy="0%" r="100%"><stop stop-color="#2A2A2E"/><stop offset="1" stop-color="#121214"/></radialGradient></defs>
+  <rect width="512" height="512" rx="116" fill="url(#g)"/>
+  <circle cx="256.0" cy="256.0" r="148" fill="none" stroke="#FF5D5D" stroke-width="60" stroke-linecap="round" stroke-dasharray="103.98 929.91" transform="rotate(-74.128 256.0 256.0)"/>
+  <circle cx="256.0" cy="256.0" r="148" fill="none" stroke="#FF8A34" stroke-width="60" stroke-linecap="round" stroke-dasharray="103.98 929.91" transform="rotate(-2.128 256.0 256.0)"/>
+  <circle cx="256.0" cy="256.0" r="148" fill="none" stroke="#FFC22E" stroke-width="60" stroke-linecap="round" stroke-dasharray="103.98 929.91" transform="rotate(69.872 256.0 256.0)"/>
+  <circle cx="256.0" cy="256.0" r="148" fill="none" stroke="#34C77B" stroke-width="60" stroke-linecap="round" stroke-dasharray="103.98 929.91" transform="rotate(141.872 256.0 256.0)"/>
+  <circle cx="256.0" cy="256.0" r="148" fill="none" stroke="#8B6CFF" stroke-width="60" stroke-linecap="round" stroke-dasharray="103.98 929.91" transform="rotate(213.872 256.0 256.0)"/>
+</svg>
